@@ -45,7 +45,7 @@
         <!-- Form -->
         <section class="form-section">
             <form id="genForm" class="glass-form" onsubmit="return handleSubmit(event)">
-                
+
                 <!-- OCR Upload Zone -->
                 <div class="upload-zone" id="uploadZone">
                     <div class="upload-content">
@@ -55,7 +55,8 @@
                             <p>Upload a photo to auto-extract IMEI & MAC</p>
                         </div>
                         <input type="file" id="fileInput" accept="image/*" hidden>
-                        <button type="button" class="btn-upload" onclick="document.getElementById('fileInput').click()">Choose Photo</button>
+                        <button type="button" class="btn-upload"
+                            onclick="document.getElementById('fileInput').click()">Choose Photo</button>
                     </div>
                     <div id="ocrLoader" class="ocr-loader" style="display: none;">
                         <div class="spinner"></div>
@@ -147,12 +148,15 @@
                 <div class="login-grid">
                     <div class="login-item"><span class="login-label">Operator:</span> <code>admin</code></div>
                     <div class="login-item"><span class="login-label">User:</span> <code>user</code> or
-                        <code>TZ_USER</code></div>
+                        <code>TZ_USER</code>
+                    </div>
                     <div class="login-item"><span class="login-label">Test:</span> <code>sztozed</code></div>
                 </div>
             </div>
             <div style="margin-top: 16px; text-align: center;">
-                <a href="config-tool/index.html" class="btn-generate" style="display: inline-block; text-decoration: none; padding: 10px 20px; font-size: 0.8rem;">⚙️ Open Config Tool</a>
+                <a href="config-tool/index.html" class="btn-generate"
+                    style="display: inline-block; text-decoration: none; padding: 10px 20px; font-size: 0.8rem;">⚙️ Open
+                    Config Tool</a>
             </div>
         </section>
 
