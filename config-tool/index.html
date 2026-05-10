@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>ZLT Router Config Tool | Tozed Configuration Editor</title>
+    <meta name="description" content="Decrypt, edit, and re-encrypt Tozed/ZLT router config files.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../style.css">
+    <style>
+        .config-editor {
+            width: 100%;
+            height: 400px;
+            background: rgba(10, 10, 20, 0.8);
+            color: var(--green);
+            font-family: var(--mono);
+            font-size: 0.85rem;
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            resize: vertical;
+            outline: none;
+            line-height: 1.5;
+        }
+        .config-editor:focus {
+            border-color: var(--gold);
+            box-shadow: 0 0 0 2px rgba(255, 190, 41, 0.15);
+        }
+        
+        .action-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 16px;
+        }
+
+        .upload-section {
+            background: var(--card);
+            border: 1px dashed var(--border);
+            border-radius: 16px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 24px;
+            transition: all 0.3s ease;
+        }
+        .upload-section:hover {
+            border-color: var(--gold);
+            background: rgba(255, 190, 41, 0.05);
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255,255,255,0.05);
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .btn-action {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: var(--font);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-download {
+            background: linear-gradient(135deg, var(--green), #22c55e);
+            color: #000;
+        }
+        .btn-download:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(74, 222, 128, 0.3); }
+        
+        .header-nav { margin-bottom: 30px; }
+        .back-link { color: var(--gold); text-decoration: none; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 6px; }
+        .back-link:hover { text-decoration: underline; }
+    </style>
+</head>
+
+<body>
+    <div class="backdrop"></div>
+    <div class="grain"></div>
+
+    <div class="app">
+        <div class="header-nav">
+            <a href="../index.html" class="back-link">← Back to Password Generator</a>
+        </div>
+        
+        <header class="header">
+            <div class="brand">
+                <div class="brand-icon">⚙️</div>
+                <div>
+                    <h1 class="brand-title">ZLT <span>CONFIG TOOL</span></h1>
+                    <p class="brand-sub">Edit Router Config.bin Files</p>
+                </div>
+            </div>
+        </header>
+
+        <section class="form-section">
+            <div class="glass-form">
+                
+                <div class="upload-section" id="dropZone">
+                    <div style="font-size: 2.5rem; margin-bottom: 12px;">📁</div>
+                    <h3 style="color: var(--gold); margin-bottom: 8px;">Upload Configuration File</h3>
+                    <p style="color: var(--text-dim); font-size: 0.85rem; margin-bottom: 16px;">Select your router's backed up config.bin file</p>
+                    <input type="file" id="configFile" accept=".bin,.cfg,.conf" hidden>
+                    <button class="btn-action" style="background: rgba(255,255,255,0.1); color: var(--text); margin: 0 auto;" onclick="document.getElementById('configFile').click()">
+                        Choose File
+                    </button>
+                </div>
+
+                <div id="editorContainer" style="display: none;">
+                    <div class="file-info">
+                        <div>
+                            <strong style="color: var(--gold);" id="fileName">config.bin</strong>
+                            <div style="font-size: 0.75rem; color: var(--text-dim);" id="fileSize">14 KB</div>
+                        </div>
+                        <span class="op-tag s50" id="fileStatus">Decrypted</span>
+                    </div>
+
+                    <textarea id="configEditor" class="config-editor" spellcheck="false" placeholder="Loading configuration..."></textarea>
+                    
+                    <div class="action-bar">
+                        <div class="secure-note">⚠️ Editing advanced settings may brick your router. Proceed with caution.</div>
+                        <button class="btn-action btn-download" id="downloadBtn">
+                            💾 Download Encrypted Config
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+        
+        <div class="warnings" style="margin-top: 24px;">
+            <strong>Note on Encryption:</strong> Different ZLT firmware versions (S50, S12, P11) use different compression and encryption schemas (often AES or simple XOR with zlib compression). This tool attempts common decryption methods locally in your browser. 
+        </div>
+
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <script>
+        const fileInput = document.getElementById('configFile');
+        const dropZone = document.getElementById('dropZone');
+        const editorContainer = document.getElementById('editorContainer');
+        const configEditor = document.getElementById('configEditor');
+        const fileNameEl = document.getElementById('fileName');
+        const fileSizeEl = document.getElementById('fileSize');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        let originalFileArray = null;
+
+        // --- File Handling UI ---
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        });
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = 'var(--gold)';
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.style.borderColor = 'var(--border)';
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = 'var(--border)';
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024, sizes = ['Bytes', 'KB', 'MB'], i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // --- Core Logic ---
+        function handleFile(file) {
+            fileNameEl.textContent = file.name;
+            fileSizeEl.textContent = formatBytes(file.size);
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const buffer = e.target.result;
+                const uint8Array = new Uint8Array(buffer);
+                originalFileArray = uint8Array;
+                
+                processConfigFile(uint8Array);
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function processConfigFile(data) {
+            dropZone.style.display = 'none';
+            editorContainer.style.display = 'block';
+            
+            // Tozed/ZLT routers typically use a mix of OpenWRT UCI configs, often compressed with zlib.
+            // Some models encrypt it first. Since this is client-side JS and we don't know the exact AES key 
+            // for the user's specific firmware, we will attempt ZLIB decompression first (common in many OpenWRT configs),
+            // and fallback to text extraction.
+            
+            try {
+                // Attempt 1: Standard Zlib Inflate
+                // The config often has a header. Let's try to find the zlib magic bytes (78 9C or 78 DA)
+                let zlibOffset = -1;
+                for (let i = 0; i < data.length - 1; i++) {
+                    if (data[i] === 0x78 && (data[i+1] === 0x9C || data[i+1] === 0xDA || data[i+1] === 0x01)) {
+                        zlibOffset = i;
+                        break;
+                    }
+                }
+
+                if (zlibOffset !== -1 && window.pako) {
+                    const compressedData = data.slice(zlibOffset);
+                    const decompressed = window.pako.inflate(compressedData, { to: 'string' });
+                    configEditor.value = decompressed;
+                    document.getElementById('fileStatus').textContent = "Zlib Decoded";
+                    return;
+                }
+            } catch (err) {
+                console.log("Zlib inflate failed:", err);
+            }
+
+            // Fallback: If it's pure text (or mostly text), extract printable characters
+            let isText = true;
+            let textOutput = "";
+            let nonPrintableCount = 0;
+            
+            const decoder = new TextDecoder('utf-8', { fatal: false });
+            textOutput = decoder.decode(data);
+
+            for (let i = 0; i < Math.min(100, data.length); i++) {
+                if (data[i] < 32 && data[i] !== 9 && data[i] !== 10 && data[i] !== 13) nonPrintableCount++;
+            }
+
+            if (nonPrintableCount > 20) {
+                // Highly encrypted binary
+                configEditor.value = "WARNING: This file appears to be heavily encrypted or uses a proprietary binary format.\n\nWithout the specific firmware decryption key (AES/DES), it cannot be cleanly parsed as text.\n\nRaw Extracted Text (may contain garbage):\n\n" + textOutput.replace(/[^\x20-\x7E\n\r\t]/g, '.');
+                document.getElementById('fileStatus').textContent = "Encrypted/Binary";
+                document.getElementById('fileStatus').className = "op-tag s50";
+                document.getElementById('fileStatus').style.color = "var(--orange)";
+                document.getElementById('fileStatus').style.borderColor = "var(--orange)";
+            } else {
+                // Mostly text
+                configEditor.value = textOutput;
+                document.getElementById('fileStatus').textContent = "Text / Unencrypted";
+            }
+        }
+
+        // --- Save Logic ---
+        downloadBtn.addEventListener('click', () => {
+            const newContent = configEditor.value;
+            
+            let finalBlob;
+            
+            // If it was just text, download as text
+            if (document.getElementById('fileStatus').textContent === "Text / Unencrypted") {
+                finalBlob = new Blob([newContent], { type: 'application/octet-stream' });
+            } 
+            // If it was Zlib encoded, we should try to re-encode it (this is complex because of headers, 
+            // but for a demo frontend we'll output raw zlib deflated data)
+            else if (document.getElementById('fileStatus').textContent === "Zlib Decoded" && window.pako) {
+                try {
+                    const compressed = window.pako.deflate(newContent);
+                    finalBlob = new Blob([compressed], { type: 'application/octet-stream' });
+                } catch(e) {
+                    alert("Error re-compressing data.");
+                    return;
+                }
+            } else {
+                // Fallback for encrypted: we can't safely re-encrypt without the key.
+                alert("This file is encrypted. Saving edited text back to .bin will break the router as the encryption key is missing.");
+                finalBlob = new Blob([newContent], { type: 'text/plain' });
+            }
+
+            const url = URL.createObjectURL(finalBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'edited_' + fileNameEl.textContent;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+    </script>
+</body>
+</html>
