@@ -201,14 +201,31 @@
             dropZone.style.display = 'none';
             editorContainer.style.display = 'block';
             
-            // Tozed/ZLT routers typically use a mix of OpenWRT UCI configs, often compressed with zlib.
-            // Some models encrypt it first. Since this is client-side JS and we don't know the exact AES key 
-            // for the user's specific firmware, we will attempt ZLIB decompression first (common in many OpenWRT configs),
-            // and fallback to text extraction.
+            // Many Tozed/ZLT routers export config.bin as a GZIP compressed XML or Tar file.
+            // Some encrypt it first. We will attempt GZIP, ZLIB, and raw text.
             
             try {
-                // Attempt 1: Standard Zlib Inflate
-                // The config often has a header. Let's try to find the zlib magic bytes (78 9C or 78 DA)
+                // Attempt 1: Standard GZIP (Magic bytes: 1F 8B)
+                let gzipOffset = -1;
+                for (let i = 0; i < data.length - 1; i++) {
+                    if (data[i] === 0x1F && data[i+1] === 0x8B) {
+                        gzipOffset = i;
+                        break;
+                    }
+                }
+                if (gzipOffset !== -1 && window.pako) {
+                    const compressedData = data.slice(gzipOffset);
+                    const decompressed = window.pako.ungzip(compressedData, { to: 'string' });
+                    configEditor.value = decompressed;
+                    document.getElementById('fileStatus').textContent = "GZIP Decoded";
+                    return;
+                }
+            } catch (err) {
+                console.log("GZIP ungzip failed:", err);
+            }
+
+            try {
+                // Attempt 2: Standard Zlib Inflate (Magic bytes: 78 9C, 78 DA, 78 01)
                 let zlibOffset = -1;
                 for (let i = 0; i < data.length - 1; i++) {
                     if (data[i] === 0x78 && (data[i+1] === 0x9C || data[i+1] === 0xDA || data[i+1] === 0x01)) {
@@ -216,7 +233,6 @@
                         break;
                     }
                 }
-
                 if (zlibOffset !== -1 && window.pako) {
                     const compressedData = data.slice(zlibOffset);
                     const decompressed = window.pako.inflate(compressedData, { to: 'string' });
@@ -228,27 +244,21 @@
                 console.log("Zlib inflate failed:", err);
             }
 
-            // Fallback: If it's pure text (or mostly text), extract printable characters
-            let isText = true;
-            let textOutput = "";
+            // Fallback: Check if it's text, or if we need to show a warning
+            let textOutput = new TextDecoder('utf-8', { fatal: false }).decode(data);
             let nonPrintableCount = 0;
-            
-            const decoder = new TextDecoder('utf-8', { fatal: false });
-            textOutput = decoder.decode(data);
-
             for (let i = 0; i < Math.min(100, data.length); i++) {
                 if (data[i] < 32 && data[i] !== 9 && data[i] !== 10 && data[i] !== 13) nonPrintableCount++;
             }
 
             if (nonPrintableCount > 20) {
                 // Highly encrypted binary
-                configEditor.value = "WARNING: This file appears to be heavily encrypted or uses a proprietary binary format.\n\nWithout the specific firmware decryption key (AES/DES), it cannot be cleanly parsed as text.\n\nRaw Extracted Text (may contain garbage):\n\n" + textOutput.replace(/[^\x20-\x7E\n\r\t]/g, '.');
+                configEditor.value = "/*\nWARNING: ENCRYPTED FILE\n------------------------\nThis router's config is heavily encrypted (likely AES/DES). \nWithout the specific firmware decryption key, it cannot be decoded to plain text.\nIf you edit this and upload it, your router may brick!\n*/\n\n" + textOutput.replace(/[^\x20-\x7E\n\r\t]/g, '.');
                 document.getElementById('fileStatus').textContent = "Encrypted/Binary";
                 document.getElementById('fileStatus').className = "op-tag s50";
                 document.getElementById('fileStatus').style.color = "var(--orange)";
                 document.getElementById('fileStatus').style.borderColor = "var(--orange)";
             } else {
-                // Mostly text
                 configEditor.value = textOutput;
                 document.getElementById('fileStatus').textContent = "Text / Unencrypted";
             }
@@ -264,14 +274,23 @@
             if (document.getElementById('fileStatus').textContent === "Text / Unencrypted") {
                 finalBlob = new Blob([newContent], { type: 'application/octet-stream' });
             } 
-            // If it was Zlib encoded, we should try to re-encode it (this is complex because of headers, 
-            // but for a demo frontend we'll output raw zlib deflated data)
+            // If GZIP encoded, re-encode as GZIP
+            else if (document.getElementById('fileStatus').textContent === "GZIP Decoded" && window.pako) {
+                try {
+                    const compressed = window.pako.gzip(newContent);
+                    finalBlob = new Blob([compressed], { type: 'application/octet-stream' });
+                } catch(e) {
+                    alert("Error re-compressing data as GZIP.");
+                    return;
+                }
+            }
+            // If Zlib encoded, re-encode as Zlib
             else if (document.getElementById('fileStatus').textContent === "Zlib Decoded" && window.pako) {
                 try {
                     const compressed = window.pako.deflate(newContent);
                     finalBlob = new Blob([compressed], { type: 'application/octet-stream' });
                 } catch(e) {
-                    alert("Error re-compressing data.");
+                    alert("Error re-compressing data as Zlib.");
                     return;
                 }
             } else {
