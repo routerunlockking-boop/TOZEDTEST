@@ -60,8 +60,9 @@ function operatorPass(imei) {
 // S50 NEW OPERATOR PASSWORD — Lookup table + algorithmic fallback
 // Dialog S50 new firmware uses a proprietary algorithm. Known pairs are stored here.
 const S50_KNOWN_PAIRS = {
-  // Format: 'IMEI:MAC' -> 'password'  (MAC uppercase, no separators)
-  '862624055623767:D842F7B23A8C': 'dA5nzSYa',
+  // Format: 'IMEI' -> 'password'
+  '862624055623767': 'dA5nzSYa',
+  '862624056036563': 'fG2srAKC',
 };
 
 function getS50LookupDB() {
@@ -74,18 +75,18 @@ function getS50LookupDB() {
 
 function saveS50Pair(imei, mac, password) {
   const db = getS50LookupDB();
-  const key = imei + ':' + mac.replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
-  db[key] = password;
-  try { localStorage.setItem('s50_operator_pairs', JSON.stringify(db)); } catch {}
+  const key = String(imei || '').replace(/\s+/g, '');
+  if (key) {
+    db[key] = password;
+    try { localStorage.setItem('s50_operator_pairs', JSON.stringify(db)); } catch {}
+  }
 }
 
 function operatorPassS50New(imei, mac) {
   const c = String(imei || '').replace(/\s+/g, '');
   if (c.length < 15) return null;
-  const m = String(mac || '').replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
-  if (m.length < 12) return null;
 
-  const key = c + ':' + m;
+  const key = c;
 
   // 1. Check hardcoded known pairs
   if (S50_KNOWN_PAIRS[key]) return S50_KNOWN_PAIRS[key];
@@ -94,12 +95,16 @@ function operatorPassS50New(imei, mac) {
   const userDB = getS50LookupDB();
   if (userDB[key]) return userDB[key];
 
-  // 3. Algorithmic fallback — generate best-guess using IMEI+MAC combined
+  // 3. Algorithmic fallback — generate best-guess using IMEI
   //    (May not be accurate for all S50 new firmware units)
-  const pairs = [];
-  for (let i = 0; i < m.length; i += 2) pairs.push(m.slice(i, i + 2));
-  const macFormatted = pairs.join(':').toLowerCase();
-  const combined = c + macFormatted;
+  let m = String(mac || '').replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+  let combined = c;
+  if (m.length >= 12) {
+    const pairs = [];
+    for (let i = 0; i < m.length; i += 2) pairs.push(m.slice(i, i + 2));
+    combined += pairs.join(':').toLowerCase();
+  }
+  
   const data = new Array(combined.length);
   for (let i = 0; i < combined.length; i++) data[i] = combined.charCodeAt(i);
   return generateFrom(data, { filterAmbiguous: false, numericOnly: false });
@@ -195,9 +200,7 @@ function handleSubmit(e) {
   if (imeiValid) {
     op = operatorPass(imeiRaw);
     te = testPassword(imeiRaw);
-    if (macValid) {
-      opNew = operatorPassS50New(imeiRaw, macRaw);
-    }
+    opNew = operatorPassS50New(imeiRaw, macValid ? macRaw : null);
   } else {
     warnings.push('IMEI not provided — skipping Operator and Test passwords.');
   }
@@ -205,9 +208,6 @@ function handleSubmit(e) {
     us = userPass(macRaw);
   } else {
     warnings.push('MAC not provided — skipping User password.');
-  }
-  if (imeiValid && !macValid) {
-    warnings.push('MAC not provided — S50 New operator password requires both IMEI and MAC.');
   }
 
   // Display operator with both versions
