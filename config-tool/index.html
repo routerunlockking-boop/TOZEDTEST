@@ -245,16 +245,20 @@
             }
 
             // Fallback: Check if it's text, or if we need to show a warning
-            let textOutput = new TextDecoder('utf-8', { fatal: false }).decode(data);
-            let nonPrintableCount = 0;
-            for (let i = 0; i < Math.min(100, data.length); i++) {
-                if (data[i] < 32 && data[i] !== 9 && data[i] !== 10 && data[i] !== 13) nonPrintableCount++;
+            let isBinary = false;
+            for (let i = 0; i < Math.min(500, data.length); i++) {
+                if (data[i] === 0 || (data[i] < 32 && data[i] !== 9 && data[i] !== 10 && data[i] !== 13)) {
+                    isBinary = true;
+                    break;
+                }
             }
 
-            if (nonPrintableCount > 20) {
+            let textOutput = new TextDecoder('utf-8', { fatal: false }).decode(data);
+
+            if (isBinary) {
                 // Highly encrypted binary
-                configEditor.value = "/*\nWARNING: ENCRYPTED FILE\n------------------------\nThis router's config is heavily encrypted (likely AES/DES). \nWithout the specific firmware decryption key, it cannot be decoded to plain text.\nIf you edit this and upload it, your router may brick!\n*/\n\n" + textOutput.replace(/[^\x20-\x7E\n\r\t]/g, '.');
-                document.getElementById('fileStatus').textContent = "Encrypted/Binary";
+                configEditor.value = "/*\n❌ ENCRYPTED / BINARY FILE DETECTED ❌\n---------------------------------------\nThis router's config (cfg_export_config_file.conf) is heavily encrypted using AES with a hidden hardware key.\n\nWithout your specific router's internal decryption key, it is mathematically impossible to read or edit this file in the browser.\n\nRaw Extracted Text (Garbage):\n*/\n\n" + textOutput.replace(/[^\x20-\x7E\n\r\t]/g, '.');
+                document.getElementById('fileStatus').textContent = "Encrypted (AES)";
                 document.getElementById('fileStatus').className = "op-tag s50";
                 document.getElementById('fileStatus').style.color = "var(--orange)";
                 document.getElementById('fileStatus').style.borderColor = "var(--orange)";
